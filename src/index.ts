@@ -1,8 +1,8 @@
 import { jwtDecode } from 'jwt-decode';
 
-const BUCKET_URL = "https://pub-a42514f5130e40f2b8e820fe4a1e96e3.r2.dev"
-
-export interface Env {}
+export interface Env {
+	FLAG_BUCKET: R2Bucket;
+}
 
 type CfJwt = {
 	aud: Array<string>;
@@ -30,17 +30,19 @@ export default {
 			// TODO: Improve to handle unrecognized country code
 			case "MY": case "SG": case "KR": case "US": 
 				const countryCode = path.toLocaleLowerCase();
-				const countryFlagUrl2 = `${BUCKET_URL}/${countryCode}.svg`
-				const html2 = `<!DOCTYPE html>
-							  <body>
-							  <h1>Country Code: ${path}</h1>
-						      <img src= "${countryFlagUrl2}" alt="Country Flag"/>
-							  </body>
-							`;
-				return new Response(html2, {
-					headers: {
-						"content-type": "text/html;charset=UTF-8",
-					},
+				const key = `${countryCode}.svg`;
+				const flagObject = await env.FLAG_BUCKET.get(key);
+				const bucketHeaders = new Headers();
+
+				if (flagObject === null) {
+					return new Response('Object Not Found', { status: 404 });
+				}
+
+				flagObject.writeHttpMetadata(bucketHeaders);
+				bucketHeaders.set('etag', flagObject.httpEtag);
+
+				return new Response(flagObject.body, {
+					headers: bucketHeaders,
 				});
 			case "secure-jwt":
 				const dataJwt = decodeCfJwt(headers['cookie']);
@@ -53,7 +55,6 @@ export default {
 				const countryFlagUrl = `/secure/${data.country}`
 				const html = `<!DOCTYPE html>
 							  <body>
-							  <h1>Hello World</h1>
 						      <p>${data.email} authenticated at ${getCurrentTimestamp()} from <a href="${countryFlagUrl}" target="_blank">${data.country}</a></p>.</p>
 							  </body>
 							`;
@@ -63,7 +64,7 @@ export default {
 					},
 				});
 			default:
-				return new Response("page accessible to all");
+				return new Response("Default restricted page");
 		}
 	},
 };
